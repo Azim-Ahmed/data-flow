@@ -1,0 +1,48 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Table {
+  id               Int       @id @default(autoincrement()) 
+  name             String    
+  fields           Json      // Dynamic fields stored as JSON
+  createdAt        DateTime  @default(now()) 
+  updatedAt        DateTime  @updatedAt 
+   
+  // React Flow specific fields (now optional)
+  position         Json?     // Optional position with x and y coordinates for the node
+  type             String?   // Optional type of the node for React Flow
+
+  relationshipsFrom Relationship[] @relation("SourceTable") // Relationships where this table is the source
+  relationshipsTo   Relationship[] @relation("TargetTable") // Relationships where this table is the target
+}
+
+model Relationship {
+  id              Int       @id @default(autoincrement())  // Primary key
+  sourceTableId   Int?  
+  targetTableId   Int?    
+  sourceField     String? 
+  targetField     String? 
+  relationType    String?
+  
+  // Optional fields
+  source          String?   // Optional ReactFlow source node ID
+  target          String?   // Optional ReactFlow target node ID
+
+  sourceTable     Table?     @relation("SourceTable", fields: [sourceTableId], references: [id]) 
+  targetTable     Table?     @relation("TargetTable", fields: [targetTableId], references: [id]) 
+
+  createdAt       DateTime  @default(now()) // Automatically set timestamp when created
+  updatedAt       DateTime  @updatedAt      
+}
