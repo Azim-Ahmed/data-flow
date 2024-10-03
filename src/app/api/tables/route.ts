@@ -2,49 +2,62 @@ import { prisma } from '@/lib';
 import { NextRequest, NextResponse } from 'next/server';
 
 // POST: Create a new table
+// POST: Create a new table
 export async function POST(req: NextRequest) {
   try {
-    // Parse the request body to extract the necessary fields
-    const body = await req.json();
-    const { name, fields, relationships, position, type } = body;
+    const { name, fields, position, type, relationships } = await req.json();
 
-    // Create a new table entry in the database with position and type
-    const table = await prisma.table.create({
+    // Step 1: Create the table (if not already existing)
+    const createdTable = await prisma.table.create({
       data: {
         name,
         fields,
-        position: position || {},  // Including optional position for the table
-        type: type || null,        // Including optional node type for React Flow
+        position,
+        type,
       },
     });
 
-    // Handle creating relationships if provided
-    if (relationships && relationships.relations) {
-      const relationshipPromises = relationships.relations.map((relation: any) => {
-        return prisma.relationship.create({
-          data: {
-            sourceTableId: table.id,               // Use the ID of the created table as the source
-            targetTableId: relation.targetTableId, // Target table ID from the request
-            sourceField: relation.sourceField || null,  // Optional
-            targetField: relation.targetField || null,  // Optional
-            relationType: relation.relationType || null, // Optional
-            source: relation.source || null,  // Optional ReactFlow source node ID
-            target: relation.target || null,  // Optional ReactFlow target node ID
-          },
-        });
-      });
+    // Step 2: Handle relationships (ensure both source and target tables exist)
+    if (relationships?.relations) {
+      await Promise.all(
+        relationships.relations.map(async (relation: any) => {
+          // Check if both source and target tables exist
+          const targetTableExists = await prisma.table.findUnique({
+            where: { id: relation.targetTableId },
+          });
 
-      // Execute all relationship creations in parallel
-      await Promise.all(relationshipPromises);
+          const sourceTableExists = await prisma.table.findUnique({
+            where: { id: relation.sourceTableId },
+          });
+
+          if (targetTableExists || sourceTableExists) {
+            await prisma.relationship.create({
+              data: {
+                sourceTableId: relation.sourceTableId ||  null,
+                targetTableId: relation.targetTableId || null,
+                sourceField: relation.sourceField || null,
+                targetField: relation.targetField || null,
+                relationType: relation.relationType || null,
+              },
+            });
+          }else{
+            
+          }
+
+          // If both tables exist, create the relationship
+          
+        })
+      );
     }
 
-    // Respond with the created table and its relationships
-    return NextResponse.json({ table });
+    return NextResponse.json({
+      message: 'Table and relationships created successfully',
+      table: createdTable,
+    });
   } catch (error) {
     console.error('Error creating table or relationships:', error);
-
     return NextResponse.json(
-      { error: 'Failed to create table or relationships' },
+      { error: 'Failed to create table and relationships' },
       { status: 500 }
     );
   }
@@ -53,59 +66,77 @@ export async function POST(req: NextRequest) {
 // PUT: Update a table and its relationships
 export async function PUT(req: NextRequest) {
   try {
-    // Parse the request body to extract the necessary fields
+    // Parse the request body which is expected to be an array of table updates
     const body = await req.json();
-    const { id, name, fields, relationships, position, type } = body;
 
-    // Update the table with new name, fields, position, and type
-    const updatedTable = await prisma.table.update({
-      where: { id },
-      data: {
-        name,
-        fields,
-        position: position || {},  // Update optional position for the node
-        type: type || null,        // Update optional node type for React Flow
-      },
-    });
+    // Ensure the body is an array of updates
+    if (!Array.isArray(body)) {
+      return NextResponse.json(
+        { error: 'Invalid data format. Expected an array of table updates.' },
+        { status: 400 }
+      );
+    }
 
-    // If relationships are provided, update them
-    if (relationships && relationships.relations) {
-      // Delete old relationships
-      await prisma.relationship.deleteMany({
-        where: {
-          OR: [
-            { sourceTableId: id },
-            { targetTableId: id },
-          ],
+    // Iterate through each table update in the array
+    const updatePromises = body.map(async (tableUpdate: any) => {
+      const { id, name, fields, position, type, relationships } = tableUpdate;
+
+      // Convert table id to an integer if necessary
+      const tableId = id;
+
+      // Update the table itself (name, fields, position, type)
+      const updatedTable = await prisma.table.update({
+        where: { id: tableId },
+        data: {
+          name: name || undefined,
+          fields: fields || undefined,
+          position: position || undefined,
+          type: type || undefined,
         },
       });
 
-      // Recreate the relationships
-      const relationshipPromises = relationships.relations.map((relation: any) => {
-        return prisma.relationship.create({
-          data: {
-            sourceTable: relation.sourceTableId ? { connect: { id: relation.sourceTableId } } : undefined, // Optional connect
-            targetTable: relation.targetTableId ? { connect: { id: relation.targetTableId } } : undefined, // Optional connect
-            sourceField: relation.sourceField || null,  // Optional
-            targetField: relation.targetField || null,  // Optional
-            relationType: relation.relationType || null, // Optional
-            source: relation.source || null,   // Optional ReactFlow source node ID
-            target: relation.target || null,   // Optional ReactFlow target node ID
+      // If relationships are provided, handle them
+      if (relationships?.relations) {
+        // Delete old relationships for both source and target tables
+        await prisma.relationship.deleteMany({
+          where: {
+            OR: [{ sourceTableId: tableId }, { targetTableId: tableId }],
           },
         });
-      });
 
-      // Execute all relationship updates in parallel
-      await Promise.all(relationshipPromises);
-    }
+        // Recreate the relationships
+        const relationshipPromises = relationships.relations.map(
+          async (relation: any) => {
+            await prisma.relationship.create({
+              data: {
+                sourceTableId: relation.sourceTableId || tableId,
+                targetTableId: relation.targetTableId,
+                sourceField: relation.sourceField || null,
+                targetField: relation.targetField || null,
+                relationType: relation.relationType || null,
+                source: relation.source || null,
+                target: relation.target || null,
+              },
+            });
+          }
+        );
 
-    // Respond with the updated table and relationships
-    return NextResponse.json({ updatedTable });
+        // Execute relationship updates in parallel for this table
+        await Promise.all(relationshipPromises);
+      }
+
+      return updatedTable;
+    });
+
+    // Execute all updates in parallel
+    const updatedTables = await Promise.all(updatePromises);
+
+    // Return the list of updated tables
+    return NextResponse.json({ updatedTables });
   } catch (error) {
-    console.error('Error updating table or relationships:', error);
-
+    console.error('Error updating multiple tables or relationships:', error);
     return NextResponse.json(
-      { error: 'Failed to update table or relationships' },
+      { error: 'Failed to update multiple tables or relationships' },
       { status: 500 }
     );
   }
@@ -119,10 +150,7 @@ export async function DELETE(req: NextRequest) {
     // Delete the relationships where the table is either source or target
     await prisma.relationship.deleteMany({
       where: {
-        OR: [
-          { sourceTableId: id },
-          { targetTableId: id },
-        ],
+        OR: [{ sourceTableId: id }, { targetTableId: id }],
       },
     });
 
@@ -132,7 +160,9 @@ export async function DELETE(req: NextRequest) {
     });
 
     // Respond with a success message
-    return NextResponse.json({ message: 'Table and its relationships deleted successfully' });
+    return NextResponse.json({
+      message: 'Table and its relationships deleted successfully',
+    });
   } catch (error) {
     console.error('Error deleting table or relationships:', error);
 
@@ -149,8 +179,8 @@ export async function GET(req: NextRequest) {
     // Retrieve all tables with their relationships from the database
     const tables = await prisma.table.findMany({
       include: {
-        relationshipsFrom: true,  // Get all relationships where this table is the source
-        relationshipsTo: true,    // Get all relationships where this table is the target
+        relationshipsFrom: true, // Get all relationships where this table is the source
+        relationshipsTo: true, // Get all relationships where this table is the target
       },
     });
 

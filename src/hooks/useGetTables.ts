@@ -12,3 +12,11 @@ export const useGetTables = () => {
     queryFn: TABLE_API.getTables,
   });
 };
+
+export const useGetTableById = (id: string) => {
+  return useQuery<Table>({
+    queryKey: [TABLE_API.getTables.name,id],  // Unique query key with table ID
+    queryFn: () => TABLE_API.getTableById(id),  // Fetch table by ID
+    enabled: !!id,  // Only run the query if the id is provided
+  });
+};

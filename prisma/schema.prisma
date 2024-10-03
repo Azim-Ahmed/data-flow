@@ -14,29 +14,31 @@ datasource db {
 }
 
 model Table {
-  id               Int       @id @default(autoincrement()) 
-  name             String    
-  fields           Json      // Dynamic fields stored as JSON
-  createdAt        DateTime  @default(now()) 
-  updatedAt        DateTime  @updatedAt 
-   
-  // React Flow specific fields (now optional)
-  position         Json?     // Optional position with x and y coordinates for the node
-  type             String?   // Optional type of the node for React Flow
+  id          String  @id @default(uuid()) // Auto-generated UUID
+  name        String
+  fields      Json      // Dynamic fields stored as JSON
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
-  relationshipsFrom Relationship[] @relation("SourceTable") // Relationships where this table is the source
-  relationshipsTo   Relationship[] @relation("TargetTable") // Relationships where this table is the target
+  // Optional position with x and y coordinates for the node
+  position    Json?
+  
+  // Optional type of the node for React Flow
+  type        String?
+  
+  // Relationships can be empty, ensure they're optional
+  relationshipsFrom Relationship[] @relation("SourceTable")
+  relationshipsTo   Relationship[] @relation("TargetTable")
 }
 
 model Relationship {
   id              Int       @id @default(autoincrement())  // Primary key
-  sourceTableId   Int?  
-  targetTableId   Int?    
+  sourceTableId   String?  
+  targetTableId   String?    
   sourceField     String? 
   targetField     String? 
   relationType    String?
   
-  // Optional fields
   source          String?   // Optional ReactFlow source node ID
   target          String?   // Optional ReactFlow target node ID
 

@@ -12,7 +12,7 @@ export function cn(...inputs: ClassValue[]) {
 // Function to generate nodes
 export const createNodes = (data: Table[]) => {
   return data.map((table: any): Node => ({
-    id: table.id.toString(),
+    id: table.id,
     type: table.type || "tableNode", // Use type if available, otherwise default
     position: { x: table.position?.x ?? 0, y: table.position?.y || 0 },
     data: {
@@ -31,7 +31,7 @@ export const createEdges = (data: any) => {
     table.relationshipsFrom.forEach((relation: any) => {
       if (relation.targetTableId) {
         edges.push({
-          id: `e${relation.sourceTableId}-${relation.targetTableId}`,
+          id: `e${relation.targetTableId}-${relation.sourceTableId}`,
           source: relation.targetTableId.toString(),
           target: relation.sourceTableId.toString(),
           label: relation.relationType || "",
